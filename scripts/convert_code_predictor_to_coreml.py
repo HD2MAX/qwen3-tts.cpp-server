@@ -125,14 +125,13 @@ class CodePredBlock(nn.Module):
         return x_norm * weight.view(1, 1, 1, -1)
 
     def _apply_rope_neox(self, x: torch.Tensor) -> torch.Tensor:
-        # x: [B, T, H, D]
-        t = x.shape[1]
-        half = x.shape[-1] // 2
+        # x: [B, T, H, D] — all dims fixed at trace time
+        half = self.head_dim // 2
         x1 = x[..., :half]
         x2 = x[..., half:]
 
-        cos = self.rope_cos[:t].view(1, t, 1, half)
-        sin = self.rope_sin[:t].view(1, t, 1, half)
+        cos = self.rope_cos.unsqueeze(0).unsqueeze(2)  # [1, max_seq, 1, half]
+        sin = self.rope_sin.unsqueeze(0).unsqueeze(2)
 
         out1 = x1 * cos - x2 * sin
         out2 = x1 * sin + x2 * cos
@@ -140,6 +139,8 @@ class CodePredBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, attn_mask: torch.Tensor) -> torch.Tensor:
         # x: [B, T, D], attn_mask: [B, 1, T, T]
+        # All dimensions are fixed (B=1, T=max_seq) — avoid dynamic shape queries
+        # which produce traced tensor scalars incompatible with coremltools int cast.
         residual = x
         x_norm = self.attn_norm(x)
 
@@ -147,10 +148,9 @@ class CodePredBlock(nn.Module):
         k = F.linear(x_norm, self.w_k)
         v = F.linear(x_norm, self.w_v)
 
-        b, t, _ = q.shape
-        q = q.view(b, t, self.n_head, self.head_dim)
-        k = k.view(b, t, self.n_kv_head, self.head_dim)
-        v = v.view(b, t, self.n_kv_head, self.head_dim)
+        q = q.reshape(1, -1, self.n_head, self.head_dim)
+        k = k.reshape(1, -1, self.n_kv_head, self.head_dim)
+        v = v.reshape(1, -1, self.n_kv_head, self.head_dim)
 
         q = self._rmsnorm_last(q, self.q_norm_w)
         k = self._rmsnorm_last(k, self.k_norm_w)
@@ -172,7 +172,7 @@ class CodePredBlock(nn.Module):
         probs = torch.softmax(scores, dim=-1)
 
         ctx = torch.matmul(probs, v)
-        ctx = ctx.permute(0, 2, 1, 3).contiguous().view(b, t, self.n_head * self.head_dim)
+        ctx = ctx.permute(0, 2, 1, 3).reshape(1, -1, self.n_head * self.head_dim)
 
         x = F.linear(ctx, self.w_o)
         x = x + residual

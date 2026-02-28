@@ -31,6 +31,14 @@ find_package(Threads REQUIRED)
 set(GGML_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ggml")
 set(GGML_BUILD_DIR "${GGML_DIR}/build")
 
+# Detect Metal backend availability
+if(APPLE AND EXISTS "${GGML_BUILD_DIR}/src/ggml-metal/libggml-metal.dylib")
+    set(GGML_HAS_METAL ON)
+    message(STATUS "GGML Metal backend found — GPU acceleration enabled")
+else()
+    set(GGML_HAS_METAL OFF)
+endif()
+
 # Text tokenizer library
 add_library(text_tokenizer STATIC
     src/text_tokenizer.cpp
@@ -42,6 +50,7 @@ target_include_directories(text_tokenizer PUBLIC
 )
 target_link_directories(text_tokenizer PUBLIC
     ${GGML_BUILD_DIR}/src
+    ${GGML_BUILD_DIR}/src/ggml-metal
 )
 target_link_libraries(text_tokenizer PUBLIC
     ggml
@@ -49,6 +58,9 @@ target_link_libraries(text_tokenizer PUBLIC
     ggml-cpu
     Threads::Threads
 )
+if(GGML_HAS_METAL)
+    target_link_libraries(text_tokenizer PUBLIC ggml-metal "-framework Metal" "-framework MetalKit")
+endif()
 
 # TTS Transformer library (GGML-based + optional CoreML bridge)
 set(TTS_TRANSFORMER_SOURCES
@@ -71,6 +83,7 @@ target_include_directories(tts_transformer PUBLIC
 )
 target_link_directories(tts_transformer PUBLIC
     ${GGML_BUILD_DIR}/src
+    ${GGML_BUILD_DIR}/src/ggml-metal
 )
 target_link_libraries(tts_transformer PUBLIC
     ggml
@@ -78,6 +91,9 @@ target_link_libraries(tts_transformer PUBLIC
     ggml-cpu
     Threads::Threads
 )
+if(GGML_HAS_METAL)
+    target_link_libraries(tts_transformer PUBLIC ggml-metal "-framework Metal" "-framework MetalKit")
+endif()
 if(APPLE AND QWEN3_TTS_COREML)
     target_link_libraries(tts_transformer PUBLIC
         "-framework Foundation"
@@ -96,6 +112,7 @@ target_include_directories(audio_tokenizer_encoder PUBLIC
 )
 target_link_directories(audio_tokenizer_encoder PUBLIC
     ${GGML_BUILD_DIR}/src
+    ${GGML_BUILD_DIR}/src/ggml-metal
 )
 target_link_libraries(audio_tokenizer_encoder PUBLIC
     ggml
@@ -103,6 +120,9 @@ target_link_libraries(audio_tokenizer_encoder PUBLIC
     ggml-cpu
     Threads::Threads
 )
+if(GGML_HAS_METAL)
+    target_link_libraries(audio_tokenizer_encoder PUBLIC ggml-metal "-framework Metal" "-framework MetalKit")
+endif()
 
 # Audio tokenizer decoder library (GGML-based)
 add_library(audio_tokenizer_decoder STATIC
@@ -115,6 +135,7 @@ target_include_directories(audio_tokenizer_decoder PUBLIC
 )
 target_link_directories(audio_tokenizer_decoder PUBLIC
     ${GGML_BUILD_DIR}/src
+    ${GGML_BUILD_DIR}/src/ggml-metal
 )
 target_link_libraries(audio_tokenizer_decoder PUBLIC
     ggml
@@ -122,6 +143,9 @@ target_link_libraries(audio_tokenizer_decoder PUBLIC
     ggml-cpu
     Threads::Threads
 )
+if(GGML_HAS_METAL)
+    target_link_libraries(audio_tokenizer_decoder PUBLIC ggml-metal "-framework Metal" "-framework MetalKit")
+endif()
 
 # Qwen3 TTS library (full pipeline)
 add_library(qwen3_tts STATIC
@@ -137,6 +161,22 @@ target_link_libraries(qwen3_tts PUBLIC
     audio_tokenizer_encoder
     audio_tokenizer_decoder
     Threads::Threads
+)
+
+# Shared library with C API (for Nim FFI)
+add_library(qwen3tts_shared SHARED
+    src/qwen3tts_c_api.cpp
+)
+set_target_properties(qwen3tts_shared PROPERTIES
+    OUTPUT_NAME "qwen3tts"
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 0
+)
+target_include_directories(qwen3tts_shared PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(qwen3tts_shared PRIVATE
+    qwen3_tts
 )
 
 # CLI executable
@@ -184,18 +224,20 @@ target_link_libraries(test_decoder PRIVATE
 )
 
 # Install targets
-install(TARGETS text_tokenizer tts_transformer audio_tokenizer_encoder audio_tokenizer_decoder qwen3_tts qwen3-tts-cli
+install(TARGETS text_tokenizer tts_transformer audio_tokenizer_encoder audio_tokenizer_decoder qwen3_tts qwen3tts_shared qwen3-tts-cli
     ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
     RUNTIME DESTINATION bin
 )
-install(FILES 
-    src/gguf_loader.h 
-    src/text_tokenizer.h 
-    src/tts_transformer.h 
+install(FILES
+    src/gguf_loader.h
+    src/text_tokenizer.h
+    src/tts_transformer.h
     src/coreml_code_predictor.h
-    src/audio_tokenizer_encoder.h 
-    src/audio_tokenizer_decoder.h 
+    src/audio_tokenizer_encoder.h
+    src/audio_tokenizer_decoder.h
     src/qwen3_tts.h
+    src/qwen3tts_c_api.h
     DESTINATION include
 )
 

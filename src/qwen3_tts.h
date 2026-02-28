@@ -111,6 +111,21 @@ public:
                                       const float * ref_samples, int32_t n_ref_samples,
                                       const tts_params & params = tts_params());
     
+    // Extract speaker embedding from raw audio samples (for caching)
+    // ref_samples: 24kHz mono float32 normalized to [-1, 1]
+    // embedding: output vector (resized to hidden_size, typically 1024)
+    // Returns true on success
+    bool extract_speaker_embedding(const float * ref_samples, int32_t n_ref_samples,
+                                   std::vector<float> & embedding,
+                                   const tts_params & params = tts_params());
+
+    // Synthesize with pre-computed speaker embedding (skips encoder)
+    // embedding: speaker embedding from extract_speaker_embedding()
+    // embedding_size: must match hidden_size (typically 1024)
+    tts_result synthesize_with_embedding(const std::string & text,
+                                          const float * embedding, int32_t embedding_size,
+                                          const tts_params & params = tts_params());
+
     // Set progress callback
     void set_progress_callback(tts_progress_callback_t callback);
     

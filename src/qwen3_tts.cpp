@@ -114,8 +114,17 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
     transformer_loaded_ = false;
     decoder_loaded_ = false;
     
-    // Construct model paths
-    std::string tts_model_path = model_dir + "/qwen3-tts-0.6b-f16.gguf";
+    // Construct model paths — prefer quantized (q8_0) over full-precision (f16)
+    std::string tts_model_path;
+    std::string q8_path = model_dir + "/qwen3-tts-0.6b-q8_0.gguf";
+    std::string f16_path = model_dir + "/qwen3-tts-0.6b-f16.gguf";
+    FILE * q8_check = fopen(q8_path.c_str(), "r");
+    if (q8_check) {
+        fclose(q8_check);
+        tts_model_path = q8_path;
+    } else {
+        tts_model_path = f16_path;
+    }
     std::string tokenizer_model_path = model_dir + "/qwen3-tts-tokenizer-f16.gguf";
     tts_model_path_ = tts_model_path;
     decoder_model_path_ = tokenizer_model_path;
@@ -273,6 +282,57 @@ tts_result Qwen3TTS::synthesize_with_voice(const std::string & text,
     }
     
     return synthesize_internal(text, speaker_embedding.data(), params, result);
+}
+
+bool Qwen3TTS::extract_speaker_embedding(const float * ref_samples, int32_t n_ref_samples,
+                                          std::vector<float> & embedding,
+                                          const tts_params & params) {
+    if (!models_loaded_) {
+        error_msg_ = "Models not loaded";
+        return false;
+    }
+
+    if (!encoder_loaded_) {
+        if (tts_model_path_.empty()) {
+            error_msg_ = "Internal error: missing TTS model path for lazy encoder load";
+            return false;
+        }
+        int64_t t_encoder_load_start = get_time_ms();
+        if (!audio_encoder_.load_model(tts_model_path_)) {
+            error_msg_ = "Failed to load speaker encoder: " + audio_encoder_.get_error();
+            return false;
+        }
+        encoder_loaded_ = true;
+        if (params.print_timing) {
+            fprintf(stderr, "  Speaker encoder lazy-loaded in %lld ms\n",
+                    (long long)(get_time_ms() - t_encoder_load_start));
+        }
+    }
+
+    if (!audio_encoder_.encode(ref_samples, n_ref_samples, embedding)) {
+        error_msg_ = "Failed to extract speaker embedding: " + audio_encoder_.get_error();
+        return false;
+    }
+
+    return true;
+}
+
+tts_result Qwen3TTS::synthesize_with_embedding(const std::string & text,
+                                                const float * embedding, int32_t embedding_size,
+                                                const tts_params & params) {
+    tts_result result;
+
+    if (!models_loaded_) {
+        result.error_msg = "Models not loaded";
+        return result;
+    }
+
+    if (embedding == nullptr || embedding_size <= 0) {
+        result.error_msg = "Invalid speaker embedding";
+        return result;
+    }
+
+    return synthesize_internal(text, embedding, params, result);
 }
 
 tts_result Qwen3TTS::synthesize_internal(const std::string & text,
