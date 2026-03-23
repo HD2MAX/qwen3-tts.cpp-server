@@ -9,7 +9,9 @@
 #include <cstdint>
 #include <cstdlib>
 
-#ifdef __APPLE__
+#ifdef _WIN32
+// Windows memory monitoring not implemented
+#elif __APPLE__
 #include <mach/mach.h>
 #else
 #include <sys/resource.h>
@@ -28,7 +30,10 @@ struct process_memory_snapshot {
 };
 
 static bool get_process_memory_snapshot(process_memory_snapshot & out) {
-#ifdef __APPLE__
+#ifdef _WIN32
+    // Windows memory monitoring not implemented
+    return false;
+#elif __APPLE__
     mach_task_basic_info_data_t basic_info = {};
     mach_msg_type_number_t basic_count = MACH_TASK_BASIC_INFO_COUNT;
     if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,

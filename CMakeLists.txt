@@ -27,11 +27,22 @@ endif()
 # Find threads
 find_package(Threads REQUIRED)
 
-# GGML library paths
+# GGML library paths - Use CUDA build for GPU acceleration
 set(GGML_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ggml")
-set(GGML_BUILD_DIR "${GGML_DIR}/build")
+set(GGML_BUILD_DIR "${GGML_DIR}/build_cuda")
 
-# Detect Metal backend availability
+# Detect CUDA backend availability
+if(WIN32 OR UNIX)
+    if(EXISTS "${GGML_BUILD_DIR}/bin/Release/ggml-cuda.dll" OR EXISTS "${GGML_BUILD_DIR}/src/ggml-cuda/libggml-cuda.so")
+        set(GGML_HAS_CUDA ON)
+        message(STATUS "GGML CUDA backend found — GPU acceleration enabled")
+    else()
+        set(GGML_HAS_CUDA OFF)
+        message(WARNING "CUDA backend not found - falling back to CPU-only build")
+    endif()
+endif()
+
+# Detect Metal backend availability (macOS only)
 if(APPLE AND EXISTS "${GGML_BUILD_DIR}/src/ggml-metal/libggml-metal.dylib")
     set(GGML_HAS_METAL ON)
     message(STATUS "GGML Metal backend found — GPU acceleration enabled")
@@ -49,7 +60,10 @@ target_include_directories(text_tokenizer PUBLIC
     ${GGML_DIR}/include
 )
 target_link_directories(text_tokenizer PUBLIC
+    ${GGML_BUILD_DIR}/bin/Release
     ${GGML_BUILD_DIR}/src
+    ${GGML_BUILD_DIR}/src/ggml-cpu
+    ${GGML_BUILD_DIR}/src/ggml-cuda
     ${GGML_BUILD_DIR}/src/ggml-metal
 )
 target_link_libraries(text_tokenizer PUBLIC
@@ -58,6 +72,9 @@ target_link_libraries(text_tokenizer PUBLIC
     ggml-cpu
     Threads::Threads
 )
+if(GGML_HAS_CUDA)
+    target_link_libraries(text_tokenizer PUBLIC ggml-cuda)
+endif()
 if(GGML_HAS_METAL)
     target_link_libraries(text_tokenizer PUBLIC ggml-metal "-framework Metal" "-framework MetalKit")
 endif()
@@ -82,7 +99,10 @@ target_include_directories(tts_transformer PUBLIC
     ${GGML_DIR}/include
 )
 target_link_directories(tts_transformer PUBLIC
+    ${GGML_BUILD_DIR}/bin/Release
     ${GGML_BUILD_DIR}/src
+    ${GGML_BUILD_DIR}/src/ggml-cpu
+    ${GGML_BUILD_DIR}/src/ggml-cuda
     ${GGML_BUILD_DIR}/src/ggml-metal
 )
 target_link_libraries(tts_transformer PUBLIC
@@ -91,6 +111,9 @@ target_link_libraries(tts_transformer PUBLIC
     ggml-cpu
     Threads::Threads
 )
+if(GGML_HAS_CUDA)
+    target_link_libraries(tts_transformer PUBLIC ggml-cuda)
+endif()
 if(GGML_HAS_METAL)
     target_link_libraries(tts_transformer PUBLIC ggml-metal "-framework Metal" "-framework MetalKit")
 endif()
@@ -111,7 +134,10 @@ target_include_directories(audio_tokenizer_encoder PUBLIC
     ${GGML_DIR}/include
 )
 target_link_directories(audio_tokenizer_encoder PUBLIC
+    ${GGML_BUILD_DIR}/bin/Release
     ${GGML_BUILD_DIR}/src
+    ${GGML_BUILD_DIR}/src/ggml-cpu
+    ${GGML_BUILD_DIR}/src/ggml-cuda
     ${GGML_BUILD_DIR}/src/ggml-metal
 )
 target_link_libraries(audio_tokenizer_encoder PUBLIC
@@ -120,6 +146,9 @@ target_link_libraries(audio_tokenizer_encoder PUBLIC
     ggml-cpu
     Threads::Threads
 )
+if(GGML_HAS_CUDA)
+    target_link_libraries(audio_tokenizer_encoder PUBLIC ggml-cuda)
+endif()
 if(GGML_HAS_METAL)
     target_link_libraries(audio_tokenizer_encoder PUBLIC ggml-metal "-framework Metal" "-framework MetalKit")
 endif()
@@ -134,7 +163,10 @@ target_include_directories(audio_tokenizer_decoder PUBLIC
     ${GGML_DIR}/include
 )
 target_link_directories(audio_tokenizer_decoder PUBLIC
+    ${GGML_BUILD_DIR}/bin/Release
     ${GGML_BUILD_DIR}/src
+    ${GGML_BUILD_DIR}/src/ggml-cpu
+    ${GGML_BUILD_DIR}/src/ggml-cuda
     ${GGML_BUILD_DIR}/src/ggml-metal
 )
 target_link_libraries(audio_tokenizer_decoder PUBLIC
@@ -143,6 +175,9 @@ target_link_libraries(audio_tokenizer_decoder PUBLIC
     ggml-cpu
     Threads::Threads
 )
+if(GGML_HAS_CUDA)
+    target_link_libraries(audio_tokenizer_decoder PUBLIC ggml-cuda)
+endif()
 if(GGML_HAS_METAL)
     target_link_libraries(audio_tokenizer_decoder PUBLIC ggml-metal "-framework Metal" "-framework MetalKit")
 endif()
@@ -258,4 +293,38 @@ add_test(NAME transformer_test
 add_test(NAME decoder_test
     COMMAND test_decoder
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# ============================================================================
+# HTTP Server executable (NEW)
+# ============================================================================
+
+add_executable(qwen3-tts-server server.cpp)
+target_include_directories(qwen3-tts-server PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(qwen3-tts-server PRIVATE
+    qwen3_tts
+    ggml
+    ggml-base
+    ggml-cpu
+    Threads::Threads
+)
+
+if(GGML_HAS_CUDA)
+    target_link_libraries(qwen3-tts-server PRIVATE ggml-cuda)
+endif()
+
+if(WIN32)
+    target_link_libraries(qwen3-tts-server PRIVATE ws2_32)
+endif()
+
+if(GGML_HAS_METAL)
+    target_link_libraries(qwen3-tts-server PRIVATE ggml-metal "-framework Metal" "-framework MetalKit")
+endif()
+
+# Install server executable
+install(TARGETS qwen3-tts-server
+    RUNTIME DESTINATION bin
 )

@@ -1,3 +1,4 @@
+#define _USE_MATH_DEFINES
 #include "audio_tokenizer_encoder.h"
 #include "gguf_loader.h"
 #include "ggml-cpu.h"

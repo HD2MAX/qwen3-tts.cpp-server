@@ -160,8 +160,10 @@ bool load_tensor_data_from_file(
     std::string & error_msg,
     enum ggml_backend_dev_type preferred_backend_type
 ) {
+    // Prioritize GPU but fallback to CPU automatically
     ggml_backend_t backend = ggml_backend_init_by_type(preferred_backend_type, nullptr);
     if (!backend && preferred_backend_type != GGML_BACKEND_DEVICE_TYPE_CPU) {
+        fprintf(stderr, "  [GPU memory full, falling back to CPU]\n");
         backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
     }
     if (!backend) {

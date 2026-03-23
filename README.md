@@ -299,3 +299,67 @@ The code predictor (15 sequential forward passes per frame) accounts for ~71% of
 - [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base) by Alibaba Qwen team
 - [GGML](https://github.com/ggml-org/ggml) tensor library by Georgi Gerganov
 - [WavTokenizer](https://github.com/jishengpeng/WavTokenizer) vocoder architecture
+
+---
+
+## HTTP Server (NEW)
+
+This fork includes an additional HTTP server executable `qwen3-tts-server` for serving TTS via REST API.
+
+### Build
+
+The server is automatically built with the main project. To build only the server:
+
+```bash
+cd build
+cmake --build . --config Release --target qwen3-tts-server
+```
+
+### Run
+
+```bash
+./build/bin/Release/qwen3-tts-server.exe -m ./models --port 5002
+```
+
+### API Endpoints
+
+#### POST /generate - Basic synthesis
+
+```bash
+curl -X POST http://localhost:5002/generate \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "language": "en"}' \
+  -o output.wav
+```
+
+#### POST /clone - Voice cloning
+
+```bash
+curl -X POST http://localhost:5002/clone \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Cloned voice", "reference": "ref.wav"}' \
+  -o cloned.wav
+```
+
+#### POST /extract-spk - Extract speaker embedding
+
+```bash
+curl -X POST http://localhost:5002/extract-spk \
+  -H "Content-Type: application/json" \
+  -d '{"reference": "ref.wav", "output_file": "voice.spk"}'
+```
+
+#### POST /health - Health check
+
+```bash
+curl -X POST http://localhost:5002/health
+```
+
+### Response Format
+
+All audio endpoints return raw WAV files with `Content-Type: audio/wav`.
+Error responses return JSON with `Content-Type: application/json`:
+
+```json
+{"error": "description of the error"}
+```
